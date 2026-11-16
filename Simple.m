@@ -103,6 +103,75 @@ set(gca,'XTick',[0.02 0.05 0.1 0.2 0.5 0.8],...
     'YTick',[0.5 1 2 5 10 20 50],'XGrid','on','YGrid','on');   
 title('pV-diagram')
 
+%% Combustion Analysis (aROHR, CA10, CA50, CA90)
+
+% Select cycle for analysis
+p_cycle = p(:,iselect);
+CA_cycle = Ca(:,iselect);
+
+% Volume derivative
+dVdCA = gradient(V, CA_cycle);
+
+% Pressure derivative
+dpdCA = gradient(p_cycle, CA_cycle);
+
+% Ratio of specific heats
+gamma = 1.35;
+
+% Apparant Rate Of Heat Release
+aROHR = (gamma/(gamma-1)) .* p_cycle .* dVdCA + ...
+        (1/(gamma-1)) .* V .* dpdCA;
+
+% Restrict analysis to combustion region
+combWindow = (CA_cycle >= -20) & (CA_cycle <= 80);
+
+CA_comb = CA_cycle(combWindow);
+aROHR_comb = aROHR(combWindow);
+
+% Ignore negative values caused by noise
+aROHR_comb(aROHR_comb < 0) = 0;
+
+% Cumulative heat release
+Qcum = cumtrapz(CA_comb,aROHR_comb);
+
+% Normalize
+Qnorm = Qcum ./ max(Qcum);
+
+% Ensure monotonic interpolation
+[Qunique,idx] = unique(Qnorm);
+
+CA10 = interp1(Qunique,CA_comb(idx),0.10);
+CA50 = interp1(Qunique,CA_comb(idx),0.50);
+CA90 = interp1(Qunique,CA_comb(idx),0.90);
+
+% Display results
+fprintf('\nCombustion Analysis\n');
+fprintf('CA10 = %.2f deg CA\n',CA10);
+fprintf('CA50 = %.2f deg CA\n',CA50);
+fprintf('CA90 = %.2f deg CA\n',CA90);
+
+% Plot heat release
+figure(3)
+
+subplot(2,1,1)
+plot(CA_cycle,aROHR,'LineWidth',1.5)
+xlabel('Crank Angle [deg]')
+ylabel('aROHR [J/deg]')
+title('Apparent Rate of Heat Release')
+grid on
+
+subplot(2,1,2)
+plot(CA_comb,Qnorm,'LineWidth',1.5)
+hold on
+xline(CA10,'g','CA10')
+xline(CA50,'b','CA50')
+xline(CA90,'r','CA90')
+xlabel('Crank Angle [deg]')
+ylabel('Normalized Heat Release [-]')
+title('Normalized Cumulative Heat Release')
+legend('Heat Release','CA10','CA50','CA90')
+grid on
+
 %% We need to change these to our own measurements
 %-------------------------------------------------
 RPM = 1500; % Rotations per minute [-]
