@@ -123,8 +123,8 @@ for cycle = 1:Ncycles
     gamma = calcGamma(CA_cycle, p_cycle, V_cycle, CaIVC, CaSOI, T_IVC, SpS);
     
     % Apparent rate of heat release for this specific cycle
-    aROHR_cycle = (gamma/(gamma-1)) .* p_cycle .* dVdCA + ...
-                  (1/(gamma-1)) .* V_cycle .* dpdCA;
+    aROHR_cycle = (gamma./(gamma-1)) .* p_cycle .* dVdCA + ...
+                  (1./(gamma-1)) .* V_cycle .* dpdCA;
               
 			  
     total_aROHR = total_aROHR + aROHR_cycle;
