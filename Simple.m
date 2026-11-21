@@ -87,7 +87,6 @@ totalWork = 0;
 
 for cycle = 1:Ncycles
     W = trapz(V, p(:,cycle));
-    fprintf('Net work for cycle %d: %.2f J\n', cycle, W);
     totalWork = totalWork + W;
 end
 
@@ -105,31 +104,44 @@ title('pV-diagram')
 
 %% Combustion Analysis (aROHR, CA10, CA50, CA90)
 
-% Select cycle for analysis
-p_cycle = p(:,iselect);
-CA_cycle = Ca(:,iselect);
+T_IVC = 293.15; % [K] Intake temperature (we have to replace this with measured intake temperature)
 
-% Volume derivative
-dVdCA = gradient(V, CA_cycle);
+% Initializing empty vectors
+total_aROHR = zeros(NdatapointsperCycle, 1);
+total_CA    = zeros(NdatapointsperCycle, 1);
+total_gamma = zeros(NdatapointsperCycle, 1);
 
-% Pressure derivative
-dpdCA = gradient(p_cycle, CA_cycle);
+for cycle = 1:Ncycles
+    p_cycle  = p(:,cycle);
+    CA_cycle = Ca(:,cycle);
+    
+    % Volume and derivatives for this cycle
+    V_cycle = CylinderVolume(CA_cycle, Cyl);
+    dVdCA   = gradient(V_cycle, CA_cycle);
+    dpdCA   = gradient(p_cycle, CA_cycle);
 
-% Ratio of specific heats
-gamma = 1.35;
+    gamma = calcGamma(CA_cycle, p_cycle, V_cycle, CaIVC, CaSOI, T_IVC, SpS);
+    
+    % Apparent rate of heat release for this specific cycle
+    aROHR_cycle = (gamma/(gamma-1)) .* p_cycle .* dVdCA + ...
+                  (1/(gamma-1)) .* V_cycle .* dpdCA;
+              
+			  
+    total_aROHR = total_aROHR + aROHR_cycle;
+    total_CA    = total_CA + CA_cycle;
+    total_gamma = total_gamma + gamma;
+end
 
-% Apparant Rate Of Heat Release
-aROHR = (gamma/(gamma-1)) .* p_cycle .* dVdCA + ...
-        (1/(gamma-1)) .* V .* dpdCA;
+% Calculating average per cycle
+aROHR  = total_aROHR / Ncycles;
+CA_avg = total_CA / Ncycles;
+gamma_avg = total_gamma / Ncycles;
 
 % Restrict analysis to combustion region
-combWindow = (CA_cycle >= -20) & (CA_cycle <= 80);
+combWindow = (CA_avg >= -20) & (CA_avg <= 80);
 
-CA_comb = CA_cycle(combWindow);
+CA_comb    = CA_avg(combWindow);
 aROHR_comb = aROHR(combWindow);
-
-% Ignore negative values caused by noise
-aROHR_comb(aROHR_comb < 0) = 0;
 
 % Cumulative heat release
 Qcum = cumtrapz(CA_comb,aROHR_comb);
@@ -155,6 +167,8 @@ figure(3)
 
 subplot(2,1,1)
 plot(CA_cycle,aROHR,'LineWidth',1.5)
+xlim([-45 135])  
+ylim([-20 120])
 xlabel('Crank Angle [deg]')
 ylabel('aROHR [J/deg]')
 title('Apparent Rate of Heat Release')
@@ -172,7 +186,25 @@ title('Normalized Cumulative Heat Release')
 legend('Heat Release','CA10','CA50','CA90')
 grid on
 
-%% We need to change these to our own measurements
+% Plot dynamic gamma
+figure(4)
+plot(CA_avg, gamma_avg, 'LineWidth', 1.5)
+hold on
+xline(CaIVC, 'b', 'IVC')
+xline(CaSOI, 'g', 'SOI')
+xline(CaEVO, 'r', 'EVO')
+xlim([-180 180])
+ylim([1.2 1.45])
+xlabel('Crank Angle [deg]')
+ylabel('\gamma [-]')
+title('Average Heat Capacity Ratio (\gamma) over Crank Angle')
+grid on
+hold off
+
+
+%% Calculating KPI'S
+
+% We need to change these to our own measurements
 %-------------------------------------------------
 RPM = 1500; % Rotations per minute [-]
 Q_LHV = 43 * MJ; % Lower Heating Value of fuel [J/kg] 
