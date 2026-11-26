@@ -1,0 +1,2 @@
+RunID,Include,DataFile,Fuel,Engine,RPM,TargetIMEP_bar,SOI_bTDC_deg,IntakePressure_bar,IntakeTemperature_K,FuelFlow_gs,AirFlow_gs,CO2_volpct,CO_ppm,HC_ppm,NOx_ppm,BrakePower_kW,Notes
+Example_Diesel_Run01,1,ExampleDataSet.txt,Diesel,1,1500,,3.2,1.00,293.15,0.30,,,,,,,Canvas example data; fuel flow = Simple.m placeholder (0.3 g/s); replace with lab runs

@@ -43,7 +43,7 @@ CaIVO = -355;
 CaIVC = -135;
 CaEVO = 149;
 CaEVC = -344;
-CaSOI = -3.2;
+CaSOI = -3.2 %isnt this supposed to be 4.2 (according to line 3)
 
 
 %% Load data (if txt file)
@@ -56,13 +56,21 @@ Ca              = reshape(dataIn(:,1),[],Ncycles); % Both p and Ca are now matri
 p               = reshape(dataIn(:,2),[],Ncycles)*bara; 
 
 
+%% Pressure preprocessing: pegging, averaging and filtering
 
+ProcessedPressure = processMeasuredPressure(Ca, p, 1.00*bara);
+
+% Individually pegged cycles for the original plots and work calculations
+p = ProcessedPressure.PeggedPressure;
+
+% Filtered mean pressure for pV and combustion analysis
+pFiltered = ProcessedPressure.FilteredPressure;
 
 %% Plotting 
 f1=figure(1);
 pp = plot(Ca,p/bara,'LineWidth',1);       
 xlabel('Ca [deg]');ylabel('p [bar]');      
-xlim([-360 360]);ylim([0 50]);                  
+xlim([-360 360]);ylim([0.5 50]);                  
 iselect = 10;                                    % Plot cycle 10 again in the same plot to emphasize it. Just to show how to access individual cycles.
 line(Ca(:,iselect),p(:,iselect)/bara,'LineWidth',2,'Color','r');
 YLIM = ylim;
@@ -77,12 +85,12 @@ title('All cycles in one plot.')
 V = CylinderVolume(Ca(:,iselect),Cyl);
 f2 = figure(2);
 subplot(2,1,1)
-plot(V/dm^3,p(:,iselect)/bara);
+plot(V/dm^3,pFiltered/bara);
 xlabel('V [dm^3]');ylabel('p [bar]');    
 xlim([0 0.8]);ylim([0.5 50]);                     
 set(gca,'XTick',[0:0.1:0.8],'XGrid','on','YGrid','on');  
-title('pV-diagram')
-
+title('Linear pV diagram')
+addIdealDieselCycle(gca, Cyl);
 totalWork = 0;
 
 for cycle = 1:Ncycles
@@ -95,12 +103,14 @@ fprintf('Average work per cycle: %.2f J\n', totalWork / Ncycles);
 
 
 subplot(2,1,2)
-loglog(V/dm^3,p(:,iselect)/bara);
+loglog(V/dm^3,pFiltered/bara);
 xlabel('V [dm^3]');ylabel('p [bar]'); 
 xlim([0.02 0.8]);ylim([0 50]);                    
 set(gca,'XTick',[0.02 0.05 0.1 0.2 0.5 0.8],...
     'YTick',[0.5 1 2 5 10 20 50],'XGrid','on','YGrid','on');   
-title('pV-diagram')
+title('Logarithmic pV diagram')
+
+addIdealDieselCycle(gca, Cyl);
 
 %% Combustion Analysis (aROHR, CA10, CA50, CA90)
 
@@ -112,7 +122,7 @@ total_CA    = zeros(NdatapointsperCycle, 1);
 total_gamma = zeros(NdatapointsperCycle, 1);
 
 for cycle = 1:Ncycles
-    p_cycle  = p(:,cycle);
+    p_cycle = smoothdata(p(:,cycle), 'sgolay', 21);
     CA_cycle = Ca(:,cycle);
     
     % Volume and derivatives for this cycle
@@ -186,20 +196,6 @@ title('Normalized Cumulative Heat Release')
 legend('Heat Release','CA10','CA50','CA90')
 grid on
 
-% Plot dynamic gamma
-figure(4)
-plot(CA_avg, gamma_avg, 'LineWidth', 1.5)
-hold on
-xline(CaIVC, 'b', 'IVC')
-xline(CaSOI, 'g', 'SOI')
-xline(CaEVO, 'r', 'EVO')
-xlim([-180 180])
-ylim([1.2 1.45])
-xlabel('Crank Angle [deg]')
-ylabel('\gamma [-]')
-title('Average Heat Capacity Ratio (\gamma) over Crank Angle')
-grid on
-hold off
 
 
 %% Calculating KPI'S
@@ -233,3 +229,117 @@ fprintf('Efficiency: %.1f %%\n', Efficiency * 100);
 fprintf('bsfc: %.1f g/kWhr\n', bsfc);
 fprintf('bsCO2: %.1f g/kWhr\n', bsCO2);
 fprintf('bsNOx: %.1f g/kWhr\n', bsNOx);
+
+RunFuelAnalysis;
+
+%% Combine original figures and fuel-analysis pages into one window
+
+% Find the fuel-analysis window
+mainWindow = findall(groot, ...
+    'Type', 'figure', ...
+    'Name', 'Theoretical fuel and injection-timing analysis');
+
+assert(~isempty(mainWindow), ...
+    'RunFuelAnalysis must run before this section.');
+
+mainWindow = mainWindow(1);
+
+% Find its existing tab group
+tabGroups = findall(mainWindow, 'Type', 'uitabgroup');
+
+assert(~isempty(tabGroups), ...
+    'No tab group found in the fuel-analysis window.');
+
+mainTabs = tabGroups(1);
+
+pageNames = {
+    'Measured cylinder pressure'
+    'Measured pV diagrams'
+    'Measured heat release'
+    'Measured gamma'
+};
+
+for figureNumber = 1:4
+
+    % Find an existing figure without creating a new one
+    sourceFigure = findall(groot, ...
+        'Type', 'figure', ...
+        'Number', figureNumber);
+
+    if isempty(sourceFigure)
+        continue
+    end
+
+    sourceFigure = sourceFigure(1);
+
+    % Never copy the destination window into itself
+    if sourceFigure == mainWindow
+        continue
+    end
+
+    % Copy axes, legends and colour bars together so their
+    % relationships are preserved.
+    children = get(sourceFigure, 'Children');
+
+    keep = arrayfun(@(h) ...
+        any(strcmp(get(h, 'Type'), ...
+        {'axes', 'legend', 'colorbar'})), children);
+
+    plotObjects = children(keep);
+
+    if isempty(plotObjects)
+        continue
+    end
+
+    newPage = uitab(mainTabs, ...
+        'Title', pageNames{figureNumber});
+
+    copyobj(plotObjects, newPage);
+
+    % Close the old figure only after copying succeeds
+    delete(sourceFigure);
+end
+
+set(mainWindow, ...
+    'Name', 'Complete engine and fuel analysis', ...
+    'NumberTitle', 'off');
+
+drawnow;
+
+%% Reorder pages
+
+desiredOrder = {
+    'Measured cylinder pressure'
+    'Measured pV diagrams'
+    'Measured heat release'
+    'Fuel pV comparison'
+    'Temperature and gamma'
+    'SOI pV sweep'
+    'Timing trends'
+    'KPI results'
+};
+
+existingTabs = mainTabs.Children;
+existingTitles = get(existingTabs, 'Title');
+
+[found, indices] = ismember(desiredOrder, existingTitles);
+
+assert(all(found), ...
+    'Some page titles do not match the existing tabs.');
+
+orderedTabs = existingTabs(indices);
+
+% Keep any additional pages at the end
+remainingTabs = existingTabs(~ismember(existingTabs, orderedTabs));
+
+mainTabs.Children = [orderedTabs(:); remainingTabs(:)];
+
+% Select the first page
+mainTabs.SelectedTab = orderedTabs(1);
+
+%% Add load-controlled analysis to the existing window
+LoadStudyResults = faRunLoadStudy( ...
+    Cyl, FuelAnalysisOptions, mainTabs);
+
+LoadStudyKPI = LoadStudyResults.KPI;
+disp(LoadStudyKPI);
